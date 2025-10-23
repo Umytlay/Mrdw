@@ -1,0 +1,203 @@
+import math
+import random
+import time
+import shutil
+import tempfile
+import os
+from urllib.parse import urlparse, parse_qs
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from fake_useragent import UserAgent
+from webdriver_manager.chrome import ChromeDriverManager
+
+# 🌍 Desteklenen coğrafi profiller
+LOCATIONS = [
+    {"lang": "en-US", "tz": "America/New_York", "country": "US"},
+    {"lang": "en-GB", "tz": "Europe/London", "country": "UK"},
+    {"lang": "ja", "tz": "Asia/Tokyo", "country": "JP"},
+    {"lang": "de", "tz": "Europe/Berlin", "country": "DE"},
+    {"lang": "fr", "tz": "Europe/Paris", "country": "FR"},
+    {"lang": "es", "tz": "Europe/Madrid", "country": "ES"},
+    {"lang": "tr", "tz": "Europe/Istanbul", "country": "TR"},
+    {"lang": "pt-BR", "tz": "America/Sao_Paulo", "country": "BR"},
+    {"lang": "ru", "tz": "Europe/Moscow", "country": "RU"},
+    {"lang": "zh-CN", "tz": "Asia/Shanghai", "country": "CN"},
+]
+
+# 💬 Gerçekçi İngilizce yorumlar
+ENGLISH_COMMENTS = [
+    "Great video!", "Thanks for sharing!", "Very informative!", "I learned a lot.",
+    "Keep up the good work!", "Awesome content!", "This helped me a lot.",
+    "Subscribed!", "Amazing tutorial!", "Perfect timing!"
+]
+
+def extract_video_id(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.hostname == 'youtu.be':
+        return parsed.path[1:]
+    elif parsed.hostname in ['www.youtube.com', 'youtube.com']:
+        if parsed.path == '/watch':
+            return parse_qs(parsed.query)['v'][0]
+        elif parsed.path.startswith('/embed/') or parsed.path.startswith('/v/'):
+            return parsed.path.split('/')[2]
+    raise ValueError("Geçersiz YouTube URL'si")
+
+def random_profile_dir():
+    return tempfile.mkdtemp(prefix="yt_profile_")
+
+def human_like_move(driver, element):
+    """Yavaş, eğri hareketlerle fareyi elemana götürür."""
+    actions = ActionChains(driver)
+    x, y = element.location['x'], element.location['y']
+    current_x, current_y = 0, 0
+    steps = random.randint(8, 15)
+    for i in range(steps):
+        next_x = current_x + (x - current_x) / (steps - i)
+        next_y = current_y + (y - current_y) / (steps - i)
+        offset_x = next_x - current_x + random.uniform(-10, 10)
+        offset_y = next_y - current_y + random.uniform(-10, 10)
+        actions.move_by_offset(offset_x, offset_y)
+        actions.pause(random.uniform(0.02, 0.08))
+        current_x, current_y = next_x, next_y
+    actions.perform()
+
+def simulate_realistic_views_worldwide(video_url: str, view_count: int):
+    total_duration = 24 * 3600  # 24 saat
+    delay_between_views = total_duration / min(view_count, 500)  # max 500/gün
+
+    for i in range(min(view_count, 500)):
+        loc = random.choice(LOCATIONS)
+        ua = UserAgent()
+        profile_dir = random_profile_dir()
+
+        options = webdriver.ChromeOptions()
+        options.add_argument(f"user-agent={ua.random}")
+        options.add_argument(f"--lang={loc['lang']}")
+        options.add_argument(f"--timezone={loc['tz']}")
+        options.add_argument(f"--user-data-dir={profile_dir}")
+        options.add_argument("--headless=new")
+        options.add_argument("--mute-audio")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1920,1080")
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+
+        driver = None
+        try:
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
+
+            # 🕵️‍♂️ Otomasyon izlerini gizle
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            driver.execute_script("window.chrome = {runtime: {}};")
+            driver.execute_script("Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]})")
+            driver.execute_script("Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']})")
+
+            # 1️⃣ YouTube ana sayfasına git
+            driver.get("https://www.youtube.com")
+            time.sleep(random.uniform(1.5, 3.0))
+
+            # 2️⃣ Video ID ile arama yap
+            video_id = extract_video_id(video_url)
+            search_box = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.NAME, "search_query"))
+            )
+            human_like_move(driver, search_box)
+            search_box.send_keys(video_id)
+            search_box.send_keys(Keys.RETURN)
+            time.sleep(random.uniform(2, 4))
+
+            # 3️⃣ İlk videoyu tıkla
+            first_video = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "ytd-video-renderer #video-title"))
+            )
+            human_like_move(driver, first_video)
+            first_video.click()
+            time.sleep(random.uniform(2, 5))
+
+            # 4️⃣ Videoyu oynat (gerekirse)
+            try:
+                play_btn = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button.ytp-play-button"))
+                )
+                play_btn.click()
+            except:
+                pass
+
+            # 5️⃣ İzleme süresi (1-5 dakika arası, %70-95)
+            estimated_duration = random.randint(60, 300)
+            watch_time = int(estimated_duration * random.uniform(0.7, 0.95))
+
+            # 6️⃣ İnsan benzeri etkileşimler
+            for sec in range(watch_time):
+                time.sleep(1)
+                r = random.random()
+                if r < 0.02:
+                    ActionChains(driver).move_by_offset(
+                        random.randint(-30, 30), random.randint(-30, 30)
+                    ).perform()
+                elif r < 0.03:
+                    body = driver.find_element(By.TAG_NAME, 'body')
+                    body.send_keys(Keys.PAGE_DOWN if random.random() < 0.5 else Keys.PAGE_UP)
+                elif r < 0.035:
+                    body = driver.find_element(By.TAG_NAME, 'body')
+                    body.send_keys('l' if random.random() < 0.5 else 'j')  # l=ileri, j=geri
+
+            # 7️⃣ Like & Yorum (ilk 30 izlenmede, %70 ihtimal)
+            if i < 30 and random.random() < 0.7:
+                time.sleep(random.uniform(2, 4))
+                try:
+                    like_btn = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Like this video']"))
+                    )
+                    human_like_move(driver, like_btn)
+                    like_btn.click()
+                    print(f"👍 Like atıldı: #{i+1}")
+
+                    time.sleep(random.uniform(1, 2))
+                    comment_box = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, "//div[@id='placeholder-area']//div[@contenteditable='true']"))
+                    )
+                    comment_box.click()
+                    time.sleep(0.5)
+
+                    comment = random.choice(ENGLISH_COMMENTS)
+                    for char in comment:
+                        comment_box.send_keys(char)
+                        time.sleep(random.uniform(0.05, 0.15))
+
+                    submit_btn = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((By.ID, "submit-button"))
+                    )
+                    submit_btn.click()
+                    print(f"💬 Yorum gönderildi: '{comment}'")
+                except Exception as e:
+                    print(f"Like/yorum hatası: {e}")
+
+            print(f"✅ İzlenme #{i+1} tamamlandı. Ülke: {loc['country']}")
+
+        except Exception as e:
+            print(f"❌ Hata: {e}")
+        finally:
+            if driver:
+                driver.quit()
+            shutil.rmtree(profile_dir, ignore_errors=True)
+
+        # 🕒 Dinamik gecikme (~60 sn ± 5 dk)
+        jitter = random.uniform(-300, 300)
+        actual_delay = max(60, delay_between_views + jitter)
+        time.sleep(actual_delay)
+
+# 🚀 Örnek kullanım
+if __name__ == "__main__":
+    VIDEO_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    simulate_realistic_views_worldwide(VIDEO_URL, 10)  # Test için 10 izlenme
